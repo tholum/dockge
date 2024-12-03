@@ -120,6 +120,8 @@ export default {
          * @returns {Array} The sorted list of stacks.
          */
         sortedStackList() {
+            console.log('Computing sortedStackList');
+            console.log('Root completeStackList:', this.$root.completeStackList);
             let result = Object.values(this.$root.completeStackList);
 
             result = result.filter(stack => {

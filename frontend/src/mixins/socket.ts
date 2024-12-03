@@ -36,6 +36,9 @@ export default defineComponent({
             // All stack list from all agents
             allAgentStackList: {} as Record<string, { stackList: Record<string, any> }>,
 
+            // Debug flag
+            debug: true,
+
             // online / offline / connecting
             agentStatusList: {
 
@@ -54,6 +57,10 @@ export default defineComponent({
         },
 
         completeStackList() {
+            console.log('Computing completeStackList');
+            console.log('Current stackList:', this.stackList);
+            console.log('Current allAgentStackList:', this.allAgentStackList);
+
             let list : Record<string, any> = {};
 
             // Add local stacks
@@ -80,6 +87,8 @@ export default defineComponent({
                     }
                 }
             }
+
+            console.log('Computed list:', list);
             return list;
         },
 
@@ -258,26 +267,31 @@ export default defineComponent({
                 terminal.write(data);
             });
 
-            agentSocket.on("stackList", (res) => {
+            socket.on("stackList", (res) => {
+                console.log('Received stackList:', res);
                 if (res.ok) {
                     if (!res.endpoint) {
                         // Initialize stackList with empty object if undefined
                         if (!this.stackList) {
                             this.stackList = {};
                         }
+                        console.log('Updating stackList:', res.stackList);
                         // Merge new stack list with existing one
                         this.stackList = { ...this.stackList, ...res.stackList };
+                        console.log('Updated stackList:', this.stackList);
                     } else {
                         if (!this.allAgentStackList[res.endpoint]) {
                             this.allAgentStackList[res.endpoint] = {
                                 stackList: {},
                             };
                         }
+                        console.log('Updating agent stackList:', res.endpoint, res.stackList);
                         // Merge new stack list with existing one
                         this.allAgentStackList[res.endpoint].stackList = {
                             ...this.allAgentStackList[res.endpoint].stackList,
                             ...res.stackList
                         };
+                        console.log('Updated agent stackList:', this.allAgentStackList[res.endpoint].stackList);
                     }
                 }
             });
