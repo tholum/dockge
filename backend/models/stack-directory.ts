@@ -1,7 +1,7 @@
 import { Model } from "objection";
 
-export class StackPath extends Model {
-    static tableName = "stack_paths";
+export class StackDirectory extends Model {
+    static tableName = "stack_directory";
 
     stack_name!: string;
     directory_path!: string;

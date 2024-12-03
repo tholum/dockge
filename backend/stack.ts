@@ -19,7 +19,7 @@ import {
 import { InteractiveTerminal, Terminal } from "./terminal";
 import childProcessAsync from "promisify-child-process";
 import { Settings } from "./settings";
-import { StackPath } from "./models/stack-path";
+import { StackDirectory } from "./models/stack-directory";
 
 export class Stack {
 
@@ -168,8 +168,8 @@ export class Stack {
 
     async getCustomPath() : Promise<string | null> {
         try {
-            const stackPath = await StackPath.query().findById(this.name);
-            return stackPath?.directory_path || null;
+            const stackDir = await StackDirectory.query().findById(this.name);
+            return stackDir?.directory_path || null;
         } catch (e) {
             return null;
         }
@@ -195,7 +195,7 @@ export class Stack {
         }
 
         // Save or update the custom path
-        await StackPath.query()
+        await StackDirectory.query()
             .insert({
                 stack_name: this.name,
                 directory_path: directoryPath,
@@ -281,7 +281,7 @@ export class Stack {
         }
 
         // Remove the custom path if it exists
-        await StackPath.query().delete().where("stack_name", this.name);
+        await StackDirectory.query().delete().where("stack_name", this.name);
 
         return exitCode;
     }
