@@ -81,6 +81,9 @@ declare global {
             success: (msg: string) => void;
             error: (msg: string) => void;
         };
+        socket: {
+            emit: (event: string, data: any, callback: (response: any) => void) => void;
+        };
     }
 }
 
@@ -110,30 +113,26 @@ const save = async () => {
 
     loading.value = true;
     try {
-        const response = await fetch(`/api/stacks/${props.stackName}/path`, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                directoryPath: directoryPath.value,
-            }),
+        window.socket.emit("setStackPath", {
+            stackName: props.stackName,
+            directoryPath: directoryPath.value,
+        }, (response: { ok: boolean; msg?: string }) => {
+            loading.value = false;
+            if (response.ok) {
+                toast.success(response.msg || "Stack path updated successfully");
+                emit("saved");
+                close();
+            } else {
+                const message = response.msg || "Failed to set path";
+                toast.error(message);
+                error.value = message;
+            }
         });
-
-        const data = await response.json();
-        if (!response.ok) {
-            throw new Error(data.message || "Failed to set path");
-        }
-
-        toast.success(data.message || "Stack path updated successfully");
-        emit("saved");
-        close();
     } catch (e) {
+        loading.value = false;
         const message = e instanceof Error ? e.message : "Failed to set path";
         toast.error(message);
         error.value = message;
-    } finally {
-        loading.value = false;
     }
 };
 </script>

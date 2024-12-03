@@ -18,6 +18,7 @@ import {
 import { passwordStrength } from "check-password-strength";
 import jwt from "jsonwebtoken";
 import { Settings } from "../settings";
+import { Stack } from "../stack";
 
 export class MainSocketHandler extends SocketHandler {
     create(socket : DockgeSocket, server : DockgeServer) {
@@ -315,6 +316,27 @@ export class MainSocketHandler extends SocketHandler {
                 callback({
                     ok: true,
                     composeTemplate,
+                });
+            } catch (e) {
+                callbackError(e, callback);
+            }
+        });
+
+        // Set stack directory path
+        socket.on("setStackPath", async (data: { stackName: string; directoryPath: string }, callback) => {
+            try {
+                checkLogin(socket);
+
+                if (!data || typeof data.stackName !== "string" || typeof data.directoryPath !== "string") {
+                    throw new ValidationError("Invalid parameters");
+                }
+
+                const stack = await Stack.getStack(server, data.stackName);
+                await stack.setCustomPath(data.directoryPath);
+
+                callback({
+                    ok: true,
+                    msg: "Stack path updated successfully",
                 });
             } catch (e) {
                 callbackError(e, callback);
