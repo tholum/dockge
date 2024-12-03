@@ -17,16 +17,15 @@
             Dialog visible: {{ showSetPathDialog }}
         </div>
     </div>
+    <Teleport to="body">
+        <SetPathDialog
+            :show="showSetPathDialog"
+            :stack-name="stackName"
+            @close="showSetPathDialog = false"
+            @saved="onPathSaved"
+        />
+    </Teleport>
 </template>
-
-<Teleport to="body">
-    <SetPathDialog
-        :show="showSetPathDialog"
-        :stack-name="stackName"
-        @close="showSetPathDialog = false"
-        @saved="onPathSaved"
-    />
-</Teleport>
 
 <script setup lang="ts">
 import { ref, computed, Teleport } from "vue";
