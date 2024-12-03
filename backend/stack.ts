@@ -53,7 +53,6 @@ export class Stack {
     }
 
     async toJSON(endpoint : string) : Promise<object> {
-
         // Since we have multiple agents now, embed primary hostname in the stack object too.
         let primaryHostname = await Settings.get("primaryHostname");
         if (!primaryHostname) {
@@ -71,10 +70,14 @@ export class Stack {
         }
 
         let obj = this.toSimpleJSON(endpoint);
+        const [composeYAML, composeENV] = await Promise.all([
+            this.getComposeYAML(),
+            this.getComposeENV()
+        ]);
         return {
             ...obj,
-            composeYAML: this.composeYAML,
-            composeENV: this.composeENV,
+            composeYAML,
+            composeENV,
             primaryHostname,
         };
     }
@@ -94,8 +97,9 @@ export class Stack {
      * Get the status of the stack from `docker compose ps --format json`
      */
     async ps() : Promise<object> {
+        const stackPath = await this.getPath();
         let res = await childProcessAsync.spawn("docker", [ "compose", "ps", "--format", "json" ], {
-            cwd: this.path,
+            cwd: stackPath,
             encoding: "utf-8",
         });
         if (!res.stdout) {
@@ -133,6 +137,18 @@ export class Stack {
         }
     }
 
+    async getComposeYAML() : Promise<string> {
+        if (this._composeYAML === undefined) {
+            try {
+                const stackPath = await this.getPath();
+                this._composeYAML = fs.readFileSync(path.join(stackPath, this._composeFileName), "utf-8");
+            } catch (e) {
+                this._composeYAML = "";
+            }
+        }
+        return this._composeYAML;
+    }
+
     get composeYAML() : string {
         if (this._composeYAML === undefined) {
             try {
@@ -142,6 +158,18 @@ export class Stack {
             }
         }
         return this._composeYAML;
+    }
+
+    async getComposeENV() : Promise<string> {
+        if (this._composeENV === undefined) {
+            try {
+                const stackPath = await this.getPath();
+                this._composeENV = fs.readFileSync(path.join(stackPath, ".env"), "utf-8");
+            } catch (e) {
+                this._composeENV = "";
+            }
+        }
+        return this._composeENV;
     }
 
     get composeENV() : string {
@@ -226,7 +254,7 @@ export class Stack {
     async save(isAdd : boolean) {
         this.validate();
 
-        let dir = this.path;
+        let dir = await this.getPath();
 
         // Check if the name is used if isAdd
         if (isAdd) {
@@ -242,15 +270,21 @@ export class Stack {
             }
         }
 
+        // Get the compose files
+        const [composeYAML, composeENV] = await Promise.all([
+            this.getComposeYAML(),
+            this.getComposeENV()
+        ]);
+
         // Write or overwrite the compose.yaml
-        await fsAsync.writeFile(path.join(dir, this._composeFileName), this.composeYAML);
+        await fsAsync.writeFile(path.join(dir, this._composeFileName), composeYAML);
 
         const envPath = path.join(dir, ".env");
 
         // Write or overwrite the .env
         // If .env is not existing and the composeENV is empty, we don't need to write it
-        if (await fileExists(envPath) || this.composeENV.trim() !== "") {
-            await fsAsync.writeFile(envPath, this.composeENV);
+        if (await fileExists(envPath) || composeENV.trim() !== "") {
+            await fsAsync.writeFile(envPath, composeENV);
         }
     }
 
