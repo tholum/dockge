@@ -137,9 +137,18 @@ export class Terminal {
                 log.debug("Terminal", `Terminal ${this.name} received data: ${data.length} bytes`);
                 this.buffer.pushItem(data);
 
+                // Log the first few bytes of data for debugging
+                const preview = data.slice(0, 100).replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+                log.debug("Terminal", `Data preview: ${preview}...`);
+
                 for (const socketID in this.socketList) {
                     const socket = this.socketList[socketID];
-                    socket.emitAgent("terminalWrite", this.name, data);
+                    try {
+                        socket.emitAgent("terminalWrite", this.name, data);
+                        log.debug("Terminal", `Data sent to socket ${socketID}`);
+                    } catch (e) {
+                        log.error("Terminal", `Failed to send data to socket ${socketID}: ${e instanceof Error ? e.message : String(e)}`);
+                    }
                 }
             });
 
@@ -190,10 +199,23 @@ export class Terminal {
     }
 
     public join(socket : DockgeSocket) {
+        log.debug("Terminal", `Socket ${socket.id} joining terminal ${this.name}`);
         this.socketList[socket.id] = socket;
+
+        // Send current buffer to new socket
+        const buffer = this.getBuffer();
+        if (buffer) {
+            try {
+                socket.emitAgent("terminalWrite", this.name, buffer);
+                log.debug("Terminal", `Sent buffer to socket ${socket.id}`);
+            } catch (e) {
+                log.error("Terminal", `Failed to send buffer to socket ${socket.id}: ${e instanceof Error ? e.message : String(e)}`);
+            }
+        }
     }
 
     public leave(socket : DockgeSocket) {
+        log.debug("Terminal", `Socket ${socket.id} leaving terminal ${this.name}`);
         delete this.socketList[socket.id];
     }
 
@@ -210,9 +232,12 @@ export class Terminal {
      */
     getBuffer() : string {
         if (this.buffer.length === 0) {
+            log.debug("Terminal", `No buffer for terminal ${this.name}`);
             return "";
         }
-        return this.buffer.join("");
+        const buffer = this.buffer.join("");
+        log.debug("Terminal", `Got buffer for terminal ${this.name}: ${buffer.length} bytes`);
+        return buffer;
     }
 
     close() {
