@@ -58,8 +58,10 @@
 <script setup lang="ts">
 import { ref, watch, withDefaults } from "vue";
 import socketMixin from "../mixins/socket";
+import { useToast } from "vue-toastification";
 
 const socket = socketMixin.methods.getSocket();
+const toast = useToast();
 const props = withDefaults(defineProps<{
     show: boolean;
     stackName: string;
@@ -77,23 +79,7 @@ const emit = defineEmits<{
     (e: "saved"): void;
 }>();
 
-declare global {
-    interface Window {
-        $notification: {
-            success: (msg: string) => void;
-            error: (msg: string) => void;
-        };
-    }
-}
-
 const error = ref("");
-const toast = {
-    success: (msg: string) => window.$notification.success(msg),
-    error: (msg: string) => {
-        error.value = msg;
-        window.$notification.error(msg);
-    },
-};
 const directoryPath = ref("");
 const loading = ref(false);
 
@@ -106,6 +92,7 @@ const close = () => {
 const save = async () => {
     error.value = "";
     if (!directoryPath.value) {
+        error.value = "Please enter a directory path";
         toast.error("Please enter a directory path");
         return;
     }
@@ -123,15 +110,15 @@ const save = async () => {
                 close();
             } else {
                 const message = response.msg || "Failed to set path";
-                toast.error(message);
                 error.value = message;
+                toast.error(message);
             }
         });
     } catch (e) {
         loading.value = false;
         const message = e instanceof Error ? e.message : "Failed to set path";
-        toast.error(message);
         error.value = message;
+        toast.error(message);
     }
 };
 </script>
