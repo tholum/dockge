@@ -458,125 +458,32 @@ export class DockgeServer {
             const forwardedFor = socket.client.conn.request.headers["x-forwarded-for"];
 
             if (typeof forwardedFor === "string") {
-                return forwardedFor.split(",")[0].trim();
-            } else if (typeof socket.client.conn.request.headers["x-real-ip"] === "string") {
-                return socket.client.conn.request.headers["x-real-ip"];
+                clientIP = forwardedFor.split(",")[0].trim();
             }
         }
-        return clientIP.replace(/^::ffff:/, "");
+
+        return clientIP;
     }
 
     /**
-     * Attempt to get the current server timezone
-     * If this fails, fall back to environment variables and then make a
-     * guess.
-     * @returns {Promise<string>} Current timezone
-     */
-    async getTimezone() {
-        // From process.env.TZ
-        try {
-            if (process.env.TZ) {
-                this.checkTimezone(process.env.TZ);
-                return process.env.TZ;
-            }
-        } catch (e) {
-            if (e instanceof Error) {
-                log.warn("timezone", e.message + " in process.env.TZ");
-            }
-        }
-
-        const timezone = await Settings.get("serverTimezone");
-
-        // From Settings
-        try {
-            log.debug("timezone", "Using timezone from settings: " + timezone);
-            if (timezone) {
-                this.checkTimezone(timezone);
-                return timezone;
-            }
-        } catch (e) {
-            if (e instanceof Error) {
-                log.warn("timezone", e.message + " in settings");
-            }
-        }
-
-        // Guess
-        try {
-            const guess = dayjs.tz.guess();
-            log.debug("timezone", "Guessing timezone: " + guess);
-            if (guess) {
-                this.checkTimezone(guess);
-                return guess;
-            } else {
-                return "UTC";
-            }
-        } catch (e) {
-            // Guess failed, fall back to UTC
-            log.debug("timezone", "Guessed an invalid timezone. Use UTC as fallback");
-            return "UTC";
-        }
-    }
-
-    /**
-     * Get the current offset
-     * @returns {string} Time offset
-     */
-    getTimezoneOffset() {
-        return dayjs().format("Z");
-    }
-
-    /**
-     * Throw an error if the timezone is invalid
-     * @param {string} timezone Timezone to test
+     * Disconnect all socket clients of a user
+     * @param {number} userID ID of user to disconnect
+     * @param {string} currentSocketID ID of current socket
      * @returns {void}
-     * @throws The timezone is invalid
      */
-    checkTimezone(timezone : string) {
-        try {
-            dayjs.utc("2013-11-18 11:55").tz(timezone).format();
-        } catch (e) {
-            throw new Error("Invalid timezone:" + timezone);
+    disconnectAllSocketClients(userID : number, currentSocketID : string) {
+        let room = this.io.sockets.adapter.rooms.get(userID.toString());
+
+        if (room) {
+            for (let socketID of room) {
+                if (socketID !== currentSocketID) {
+                    let socket = this.io.sockets.sockets.get(socketID);
+                    if (socket) {
+                        socket.disconnect();
+                    }
+                }
+            }
         }
-    }
-
-    /**
-     * Initialize the data directory
-     */
-    initDataDir() {
-        if (! fs.existsSync(this.config.dataDir)) {
-            fs.mkdirSync(this.config.dataDir, { recursive: true });
-        }
-
-        // Check if a directory
-        if (!fs.lstatSync(this.config.dataDir).isDirectory()) {
-            throw new Error(`Fatal error: ${this.config.dataDir} is not a directory`);
-        }
-
-        // Create data/stacks directory
-        if (!fs.existsSync(this.stacksDir)) {
-            fs.mkdirSync(this.stacksDir, { recursive: true });
-        }
-
-        log.info("server", `Data Dir: ${this.config.dataDir}`);
-    }
-
-    /**
-     * Init or reset JWT secret
-     * @returns  JWT secret
-     */
-    async initJWTSecret() : Promise<Bean> {
-        let jwtSecretBean = await R.findOne("setting", " `key` = ? ", [
-            "jwtSecret",
-        ]);
-
-        if (!jwtSecretBean) {
-            jwtSecretBean = R.dispense("setting");
-            jwtSecretBean.key = "jwtSecret";
-        }
-
-        jwtSecretBean.value = generatePasswordHash(genSecret());
-        await R.store(jwtSecretBean);
-        return jwtSecretBean;
     }
 
     /**
@@ -587,108 +494,79 @@ export class DockgeServer {
         let socketList = this.io.sockets.sockets.values();
 
         let stackList;
+        let stackListJSON;
 
         for (let socket of socketList) {
             let dockgeSocket = socket as DockgeSocket;
 
             // Check if the room is a number (user id)
             if (dockgeSocket.userID) {
-
                 // Get the list only if there is a logged in user
                 if (!stackList) {
                     stackList = await Stack.getStackList(this, useCache);
-                }
+                    stackListJSON = {};
 
-                let map : Map<string, object> = new Map();
-
-                for (let [ stackName, stack ] of stackList) {
-                    map.set(stackName, stack.toSimpleJSON(dockgeSocket.endpoint));
+                    // Convert each stack to JSON
+                    for (const [name, stack] of stackList.entries()) {
+                        stackListJSON[name] = await stack.toJSON("");
+                    }
                 }
 
                 log.debug("server", "Send stack list to user: " + dockgeSocket.id + " (" + dockgeSocket.endpoint + ")");
-                dockgeSocket.emitAgent("stackList", {
+
+                dockgeSocket.emit("stackList", {
                     ok: true,
-                    stackList: Object.fromEntries(map),
+                    stackList: stackListJSON,
+                    endpoint: dockgeSocket.endpoint,
                 });
             }
         }
     }
 
-    async getDockerNetworkList() : Promise<string[]> {
-        let res = await childProcessAsync.spawn("docker", [ "network", "ls", "--format", "{{.Name}}" ], {
-            encoding: "utf-8",
-        });
+    /**
+     * Create data directory and any necessary subdirectories
+     * @returns {void}
+     */
+    initDataDir() {
+        log.info("server", "Data Dir: " + this.config.dataDir);
 
-        if (!res.stdout) {
-            return [];
+        if (!fs.existsSync(this.config.dataDir)) {
+            fs.mkdirSync(this.config.dataDir);
         }
 
-        let list = res.stdout.toString().split("\n");
-
-        // Remove empty string item
-        list = list.filter((item) => {
-            return item !== "";
-        }).sort((a, b) => {
-            return a.localeCompare(b);
-        });
-
-        return list;
-    }
-
-    get stackDirFullPath() {
-        return path.resolve(this.stacksDir);
+        if (!fs.existsSync(this.stacksDir)) {
+            fs.mkdirSync(this.stacksDir);
+        }
     }
 
     /**
-     * Shutdown the application
-     * Stops all monitors and closes the database connection.
-     * @param signal The signal that triggered this function to be called.
+     * Generate a JWT secret
+     * @returns {Bean} JWT secret bean
      */
-    async shutdownFunction(signal : string | undefined) {
-        log.info("server", "Shutdown requested");
-        log.info("server", "Called signal: " + signal);
-
-        // TODO: Close all terminals?
-
-        await Database.close();
-        Settings.stopCacheCleaner();
+    async initJWTSecret() : Promise<Bean> {
+        let jwtSecretBean = R.dispense("setting");
+        jwtSecretBean.key = "jwtSecret";
+        jwtSecretBean.value = genSecret();
+        await R.store(jwtSecretBean);
+        return jwtSecretBean;
     }
 
     /**
-     * Final function called before application exits
+     * Shutdown function - e.g. for cleanup DB, ...
+     */
+    async shutdownFunction() {
+        log.info("server", "Shutdown requested");
+        log.info("server", "Called signal: " + process.env.SIGNAL);
+
+        // Close database connection
+        log.info("server", "Closing the database");
+        await Database.close();
+    }
+
+    /**
+     * Finally function - e.g. for logging
      */
     finalFunction() {
-        log.info("server", "Graceful shutdown successful!");
+        log.info("server", "Shutdown completed");
     }
-
-    /**
-     * Force connected sockets of a user to refresh and disconnect.
-     * Used for resetting password.
-     * @param {string} userID
-     * @param {string?} currentSocketID
-     */
-    disconnectAllSocketClients(userID: number | undefined, currentSocketID? : string) {
-        for (const rawSocket of this.io.sockets.sockets.values()) {
-            let socket = rawSocket as DockgeSocket;
-            if ((!userID || socket.userID === userID) && socket.id !== currentSocketID) {
-                try {
-                    socket.emit("refresh");
-                    socket.disconnect();
-                } catch (e) {
-
-                }
-            }
-        }
-    }
-
-    isSSL() {
-        return this.config.sslKey && this.config.sslCert;
-    }
-
-    getLocalWebSocketURL() {
-        const protocol = this.isSSL() ? "wss" : "ws";
-        const host = this.config.hostname || "localhost";
-        return `${protocol}://${host}:${this.config.port}`;
-    }
-
 }

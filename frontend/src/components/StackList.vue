@@ -184,7 +184,7 @@ export default {
                         return -1;
                     }
                 }
-                return m1.name.localeCompare(m2.name);
+                return (m1.name || '').localeCompare(m2.name || '');
             });
 
             return result;
