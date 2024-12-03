@@ -1,16 +1,10 @@
 import { DockgeServer } from "../dockge-server";
 import { Router } from "../router";
 import express, { Express, Router as ExpressRouter } from "express";
-import { stackPathRouter } from "./stack-path-router";
 
 export class MainRouter extends Router {
     create(app: Express, server: DockgeServer): ExpressRouter {
         const router = express.Router();
-
-        // API routes
-        const apiRouter = express.Router();
-        apiRouter.use("/stacks", stackPathRouter);
-        router.use("/api", apiRouter);
 
         // Frontend routes
         router.get("/", (req, res) => {
