@@ -69,11 +69,15 @@ export class Stack {
             }
         }
 
-        let obj = await this.toSimpleJSON(endpoint);
+        const [obj, composeYAML, composeENV] = await Promise.all([
+            this.toSimpleJSON(endpoint),
+            this.getComposeYAML(),
+            this.getComposeENV()
+        ]);
         return {
             ...obj,
-            composeYAML: this.composeYAML,
-            composeENV: this.composeENV,
+            composeYAML,
+            composeENV,
             primaryHostname,
         };
     }
@@ -128,16 +132,22 @@ export class Stack {
         return this._status;
     }
 
-    validate() {
+    async validate() {
         // Check name, allows [a-z][0-9] _ - only
         if (!this.name.match(/^[a-z0-9_-]+$/)) {
             throw new ValidationError("Stack name can only contain [a-z][0-9] _ - only");
         }
 
-        // Check YAML format
-        yaml.parse(this.composeYAML);
+        // Get compose files
+        const [composeYAML, composeENV] = await Promise.all([
+            this.getComposeYAML(),
+            this.getComposeENV()
+        ]);
 
-        let lines = this.composeENV.split("\n");
+        // Check YAML format
+        yaml.parse(composeYAML);
+
+        let lines = composeENV.split("\n");
 
         // Check if the .env is able to pass docker-compose
         // Prevent "setenv: The parameter is incorrect"
@@ -145,6 +155,18 @@ export class Stack {
         if (lines.length === 1 && !lines[0].includes("=") && lines[0].length > 0) {
             throw new ValidationError("Invalid .env format");
         }
+    }
+
+    async getComposeYAML() : Promise<string> {
+        if (this._composeYAML === undefined) {
+            try {
+                const operationPath = await this.getOperationPath();
+                this._composeYAML = fs.readFileSync(path.join(operationPath, this._composeFileName), "utf-8");
+            } catch (e) {
+                this._composeYAML = "";
+            }
+        }
+        return this._composeYAML;
     }
 
     get composeYAML() : string {
@@ -156,6 +178,18 @@ export class Stack {
             }
         }
         return this._composeYAML;
+    }
+
+    async getComposeENV() : Promise<string> {
+        if (this._composeENV === undefined) {
+            try {
+                const operationPath = await this.getOperationPath();
+                this._composeENV = fs.readFileSync(path.join(operationPath, ".env"), "utf-8");
+            } catch (e) {
+                this._composeENV = "";
+            }
+        }
+        return this._composeENV;
     }
 
     get composeENV() : string {
@@ -240,7 +274,7 @@ export class Stack {
      * @param isAdd
      */
     async save(isAdd : boolean) {
-        this.validate();
+        await this.validate();
 
         let dir = this.path;
 
@@ -258,15 +292,21 @@ export class Stack {
             }
         }
 
+        // Get compose files
+        const [composeYAML, composeENV] = await Promise.all([
+            this.getComposeYAML(),
+            this.getComposeENV()
+        ]);
+
         // Write or overwrite the compose.yaml
-        await fsAsync.writeFile(path.join(dir, this._composeFileName), this.composeYAML);
+        await fsAsync.writeFile(path.join(dir, this._composeFileName), composeYAML);
 
         const envPath = path.join(dir, ".env");
 
         // Write or overwrite the .env
         // If .env is not existing and the composeENV is empty, we don't need to write it
-        if (await fileExists(envPath) || this.composeENV.trim() !== "") {
-            await fsAsync.writeFile(envPath, this.composeENV);
+        if (await fileExists(envPath) || composeENV.trim() !== "") {
+            await fsAsync.writeFile(envPath, composeENV);
         }
     }
 
