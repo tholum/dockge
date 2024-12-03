@@ -123,68 +123,74 @@ export default {
             let result = Object.values(this.$root.completeStackList);
 
             result = result.filter(stack => {
+                if (!stack) return false;
+
                 // filter by search text
                 // finds stack name, tag name or tag value
                 let searchTextMatch = true;
                 if (this.searchText !== "") {
                     const loweredSearchText = this.searchText.toLowerCase();
-                    searchTextMatch =
-                        stack.name.toLowerCase().includes(loweredSearchText)
-                        || stack.tags.find(tag => tag.name.toLowerCase().includes(loweredSearchText)
-                            || tag.value?.toLowerCase().includes(loweredSearchText));
+                    searchTextMatch = stack.name && stack.name.toLowerCase().includes(loweredSearchText);
+                    
+                    // Only check tags if they exist
+                    if (stack.tags && Array.isArray(stack.tags)) {
+                        searchTextMatch = searchTextMatch || stack.tags.some(tag => 
+                            (tag.name && tag.name.toLowerCase().includes(loweredSearchText)) ||
+                            (tag.value && tag.value.toLowerCase().includes(loweredSearchText))
+                        );
+                    }
                 }
 
                 // filter by active
                 let activeMatch = true;
                 if (this.filterState.active != null && this.filterState.active.length > 0) {
-                    activeMatch = this.filterState.active.includes(stack.active);
+                    activeMatch = stack.active !== undefined && this.filterState.active.includes(stack.active);
                 }
 
                 // filter by tags
                 let tagsMatch = true;
-                if (this.filterState.tags != null && this.filterState.tags.length > 0) {
-                    tagsMatch = stack.tags.map(tag => tag.tag_id) // convert to array of tag IDs
-                        .filter(stackTagId => this.filterState.tags.includes(stackTagId)) // perform Array Intersaction between filter and stack's tags
-                        .length > 0;
+                if (this.filterState.tags != null && this.filterState.tags.length > 0 && stack.tags && Array.isArray(stack.tags)) {
+                    const tagIds = stack.tags
+                        .map(tag => tag.tag_id)
+                        .filter(id => id !== undefined);
+                    tagsMatch = tagIds.some(id => this.filterState.tags.includes(id));
                 }
 
                 return searchTextMatch && activeMatch && tagsMatch;
             });
 
             result.sort((m1, m2) => {
+                if (!m1 || !m2) return 0;
 
                 // sort by managed by dockge
-                if (m1.isManagedByDockge && !m2.isManagedByDockge) {
-                    return -1;
-                } else if (!m1.isManagedByDockge && m2.isManagedByDockge) {
-                    return 1;
+                const m1Managed = Boolean(m1.isManagedByDockge);
+                const m2Managed = Boolean(m2.isManagedByDockge);
+                if (m1Managed !== m2Managed) {
+                    return m1Managed ? -1 : 1;
                 }
 
                 // sort by status
-                if (m1.status !== m2.status) {
-                    if (m2.status === RUNNING) {
-                        return 1;
-                    } else if (m1.status === RUNNING) {
-                        return -1;
-                    } else if (m2.status === EXITED) {
-                        return 1;
-                    } else if (m1.status === EXITED) {
-                        return -1;
-                    } else if (m2.status === CREATED_STACK) {
-                        return 1;
-                    } else if (m1.status === CREATED_STACK) {
-                        return -1;
-                    } else if (m2.status === CREATED_FILE) {
-                        return 1;
-                    } else if (m1.status === CREATED_FILE) {
-                        return -1;
-                    } else if (m2.status === UNKNOWN) {
-                        return 1;
-                    } else if (m1.status === UNKNOWN) {
-                        return -1;
+                const m1Status = m1.status || UNKNOWN;
+                const m2Status = m2.status || UNKNOWN;
+                if (m1Status !== m2Status) {
+                    const statusOrder = [
+                        RUNNING,
+                        EXITED,
+                        CREATED_STACK,
+                        CREATED_FILE,
+                        UNKNOWN
+                    ];
+                    const m1Index = statusOrder.indexOf(m1Status);
+                    const m2Index = statusOrder.indexOf(m2Status);
+                    if (m1Index !== -1 && m2Index !== -1) {
+                        return m1Index - m2Index;
                     }
                 }
-                return (m1.name || '').localeCompare(m2.name || '');
+
+                // sort by name
+                const m1Name = m1.name || '';
+                const m2Name = m2.name || '';
+                return m1Name.localeCompare(m2Name);
             });
 
             return result;

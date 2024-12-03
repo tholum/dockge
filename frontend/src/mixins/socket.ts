@@ -31,10 +31,10 @@ export default defineComponent({
             username: null,
             composeTemplate: "",
 
-            stackList: {},
+            stackList: {} as Record<string, any>,
 
             // All stack list from all agents
-            allAgentStackList: {} as Record<string, object>,
+            allAgentStackList: {} as Record<string, { stackList: Record<string, any> }>,
 
             // online / offline / connecting
             agentStatusList: {
@@ -54,16 +54,30 @@ export default defineComponent({
         },
 
         completeStackList() {
-            let list : Record<string, object> = {};
+            let list : Record<string, any> = {};
 
-            for (let stackName in this.stackList) {
-                list[stackName + "_"] = this.stackList[stackName];
+            // Add local stacks
+            if (this.stackList) {
+                for (let stackName in this.stackList) {
+                    if (this.stackList[stackName]) {
+                        list[stackName] = this.stackList[stackName];
+                    }
+                }
             }
 
-            for (let endpoint in this.allAgentStackList) {
-                let instance = this.allAgentStackList[endpoint];
-                for (let stackName in instance.stackList) {
-                    list[stackName + "_" + endpoint] = instance.stackList[stackName];
+            // Add agent stacks
+            if (this.allAgentStackList) {
+                for (let endpoint in this.allAgentStackList) {
+                    let instance = this.allAgentStackList[endpoint];
+                    if (instance && instance.stackList) {
+                        for (let stackName in instance.stackList) {
+                            if (instance.stackList[stackName]) {
+                                // Only add the endpoint suffix if it's not empty
+                                const key = endpoint ? `${stackName}_${endpoint}` : stackName;
+                                list[key] = instance.stackList[stackName];
+                            }
+                        }
+                    }
                 }
             }
             return list;
@@ -247,14 +261,23 @@ export default defineComponent({
             agentSocket.on("stackList", (res) => {
                 if (res.ok) {
                     if (!res.endpoint) {
-                        this.stackList = res.stackList;
+                        // Initialize stackList with empty object if undefined
+                        if (!this.stackList) {
+                            this.stackList = {};
+                        }
+                        // Merge new stack list with existing one
+                        this.stackList = { ...this.stackList, ...res.stackList };
                     } else {
                         if (!this.allAgentStackList[res.endpoint]) {
                             this.allAgentStackList[res.endpoint] = {
                                 stackList: {},
                             };
                         }
-                        this.allAgentStackList[res.endpoint].stackList = res.stackList;
+                        // Merge new stack list with existing one
+                        this.allAgentStackList[res.endpoint].stackList = {
+                            ...this.allAgentStackList[res.endpoint].stackList,
+                            ...res.stackList
+                        };
                     }
                 }
             });
