@@ -334,12 +334,6 @@ export class MainSocketHandler extends SocketHandler {
                 const stack = await Stack.getStack(server, data.stackName);
                 await stack.setCustomPath(data.directoryPath);
 
-                // Save to database
-                const stackBean = R.dispense("stack");
-                stackBean.name = data.stackName;
-                stackBean.directory_path = data.directoryPath;
-                await R.store(stackBean);
-
                 callback({
                     ok: true,
                     msg: "Stack path updated successfully",
