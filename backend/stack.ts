@@ -43,9 +43,15 @@ export class Stack {
 
         if (!skipFSOperations) {
             // Check if compose file name is different from compose.yaml
+            const customPath = Stack.pathCache.get(this.name);
+            const operationPath = customPath || this.path;
+            log.debug("stack", `Checking compose file in ${operationPath} (custom: ${Boolean(customPath)})`);
             for (const filename of acceptedComposeFileNames) {
-                if (fs.existsSync(path.join(this.path, filename))) {
+                const filePath = path.join(operationPath, filename);
+                log.debug("stack", `Checking for ${filePath}`);
+                if (fs.existsSync(filePath)) {
                     this._composeFileName = filename;
+                    log.debug("stack", `Found compose file: ${filename}`);
                     break;
                 }
             }
@@ -167,8 +173,10 @@ export class Stack {
         if (this._composeYAML === undefined) {
             try {
                 const operationPath = this.getOperationPath();
+                log.debug("stack", `Reading compose file from ${operationPath}`);
                 this._composeYAML = fs.readFileSync(path.join(operationPath, this._composeFileName), "utf-8");
             } catch (e) {
+                log.error("stack", `Failed to read compose file: ${e instanceof Error ? e.message : String(e)}`);
                 this._composeYAML = "";
             }
         }
@@ -179,8 +187,11 @@ export class Stack {
         if (this._composeENV === undefined) {
             try {
                 const operationPath = this.getOperationPath();
+                log.debug("stack", `Reading env file from ${operationPath}`);
                 this._composeENV = fs.readFileSync(path.join(operationPath, ".env"), "utf-8");
             } catch (e) {
+                // Only log as debug since .env is optional
+                log.debug("stack", `No .env file found: ${e instanceof Error ? e.message : String(e)}`);
                 this._composeENV = "";
             }
         }
@@ -293,7 +304,8 @@ export class Stack {
 
     async deploy(socket : DockgeSocket) : Promise<number> {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
-        const operationPath = await this.getOperationPath();
+        const operationPath = this.getOperationPath();
+        log.debug("stack", `Deploying in ${operationPath}`);
         let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "up", "-d", "--remove-orphans" ], operationPath);
         if (exitCode !== 0) {
             throw new Error("Failed to deploy, please check the terminal output for more information.");
@@ -303,7 +315,8 @@ export class Stack {
 
     async delete(socket: DockgeSocket) : Promise<number> {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
-        const operationPath = await this.getOperationPath();
+        const operationPath = this.getOperationPath();
+        log.debug("stack", `Deleting in ${operationPath}`);
         let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "down", "--remove-orphans" ], operationPath);
         if (exitCode !== 0) {
             throw new Error("Failed to delete, please check the terminal output for more information.");
@@ -311,6 +324,7 @@ export class Stack {
 
         // Remove the stack folder if it's managed by Dockge
         if (this.isManagedByDockge) {
+            log.debug("stack", `Removing stack folder: ${this.path}`);
             await fsAsync.rm(this.path, {
                 recursive: true,
                 force: true
@@ -318,6 +332,7 @@ export class Stack {
         }
 
         // Remove the custom path if it exists
+        log.debug("stack", `Removing custom path for ${this.name}`);
         await R.exec("DELETE FROM stack WHERE name = ?", [this.name]);
         Stack.updatePathCache(this.name, null);
 
