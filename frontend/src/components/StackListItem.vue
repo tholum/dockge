@@ -7,23 +7,29 @@
                 <div v-if="$root.agentCount > 1" class="endpoint">{{ endpointDisplay }}</div>
             </div>
         </router-link>
-        <button v-if="!stack.isManagedByDockge" class="button is-small is-light" @click="showSetPathDialog = true">
+        <button v-if="!stack.isManagedByDockge" class="button is-small is-light" @click="openDialog">
             <span class="icon">
                 <i class="fas fa-folder"></i>
             </span>
             <span>Set Path</span>
         </button>
+        <div class="debug-info" style="display: none;">
+            Dialog visible: {{ showSetPathDialog }}
+        </div>
     </div>
+</template>
+
+<Teleport to="body">
     <SetPathDialog
         :show="showSetPathDialog"
         :stack-name="stackName"
         @close="showSetPathDialog = false"
         @saved="onPathSaved"
     />
-</template>
+</Teleport>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, Teleport } from "vue";
 import Uptime from "./Uptime.vue";
 import SetPathDialog from "./SetPathDialog.vue";
 
@@ -62,6 +68,12 @@ const props = defineProps({
 
 const isCollapsed = ref(true);
 const showSetPathDialog = ref(false);
+
+const openDialog = () => {
+    console.log('Opening dialog...');
+    showSetPathDialog.value = true;
+    console.log('Dialog state:', showSetPathDialog.value);
+};
 
 const endpointDisplay = computed(() => {
     return window.$root.endpointDisplayFunction(props.stack.endpoint);

@@ -42,12 +42,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch, withDefaults } from "vue";
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
     show: boolean;
     stackName: string;
-}>();
+}>(), {
+    show: false
+});
+
+// Watch for show prop changes
+watch(() => props.show, (newValue) => {
+    console.log('Dialog show prop changed:', newValue);
+});
 
 const emit = defineEmits<{
     (e: "close"): void;
@@ -118,6 +125,13 @@ const save = async () => {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+}
+
+.modal {
+    display: none;
+    &.is-active {
+        display: flex;
+    }
 }
 
 .modal-card-foot {
