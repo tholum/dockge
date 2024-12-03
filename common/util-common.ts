@@ -70,15 +70,15 @@ export function statusName(status : number) : string {
 export function statusNameShort(status : number) : string {
     switch (status) {
         case CREATED_FILE:
-            return "inactive";
+            return "start";
         case CREATED_STACK:
-            return "inactive";
+            return "start";
         case RUNNING:
-            return "active";
+            return "restart";
         case EXITED:
-            return "exited";
+            return "start";
         default:
-            return "?";
+            return "start";
     }
 }
 

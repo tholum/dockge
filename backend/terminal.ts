@@ -85,6 +85,9 @@ export class Terminal {
             return;
         }
 
+        log.debug("Terminal", `Starting terminal ${this.name} in ${this.cwd}`);
+        log.debug("Terminal", `Command: ${this.file} ${this.args.join(' ')}`);
+
         this.kickDisconnectedClientsInterval = setInterval(() => {
             for (const socketID in this.socketList) {
                 const socket = this.socketList[socketID];
@@ -114,15 +117,24 @@ export class Terminal {
         }
 
         try {
+            // Ensure cwd exists
+            if (!fs.existsSync(this.cwd)) {
+                throw new Error(`Working directory ${this.cwd} does not exist`);
+            }
+
             this._ptyProcess = pty.spawn(this.file, this.args, {
                 name: this.name,
                 cwd: this.cwd,
                 cols: TERMINAL_COLS,
                 rows: this.rows,
+                env: process.env
             });
+
+            log.debug("Terminal", `Terminal ${this.name} spawned with PID ${this._ptyProcess.pid}`);
 
             // On Data
             this._ptyProcess.onData((data) => {
+                log.debug("Terminal", `Terminal ${this.name} received data: ${data.length} bytes`);
                 this.buffer.pushItem(data);
 
                 for (const socketID in this.socketList) {
@@ -132,13 +144,16 @@ export class Terminal {
             });
 
             // On Exit
-            this._ptyProcess.onExit(this.exit);
+            this._ptyProcess.onExit((event) => {
+                log.debug("Terminal", `Terminal ${this.name} exited with code ${event.exitCode}`);
+                this.exit(event);
+            });
         } catch (error) {
             if (error instanceof Error) {
                 clearInterval(this.keepAliveInterval);
 
                 log.error("Terminal", "Failed to start terminal: " + error.message);
-                const exitCode = Number(error.message.split(" ").pop());
+                const exitCode = Number(error.message.split(" ").pop()) || 1;
                 this.exit({
                     exitCode,
                 });
@@ -231,17 +246,29 @@ export class Terminal {
                 return;
             }
 
+            log.debug("Terminal", `Creating terminal ${terminalName} in ${cwd}`);
+            log.debug("Terminal", `Command: ${file} ${args.join(' ')}`);
+
             let terminal = new Terminal(server, terminalName, file, args, cwd);
             terminal.rows = PROGRESS_TERMINAL_ROWS;
 
             if (socket) {
                 terminal.join(socket);
+                log.debug("Terminal", `Socket ${socket.id} joined terminal ${terminalName}`);
             }
 
             terminal.onExit((exitCode : number) => {
+                log.debug("Terminal", `Terminal ${terminalName} exited with code ${exitCode}`);
                 resolve(exitCode);
             });
-            terminal.start();
+
+            try {
+                terminal.start();
+                log.debug("Terminal", `Terminal ${terminalName} started`);
+            } catch (e) {
+                log.error("Terminal", `Failed to start terminal ${terminalName}: ${e instanceof Error ? e.message : String(e)}`);
+                reject(e);
+            }
         });
     }
 
