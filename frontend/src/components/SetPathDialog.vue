@@ -57,7 +57,9 @@
 
 <script setup lang="ts">
 import { ref, watch, withDefaults } from "vue";
+import socketMixin from "../mixins/socket";
 
+const socket = socketMixin.methods.getSocket();
 const props = withDefaults(defineProps<{
     show: boolean;
     stackName: string;
@@ -80,9 +82,6 @@ declare global {
         $notification: {
             success: (msg: string) => void;
             error: (msg: string) => void;
-        };
-        socket: {
-            emit: (event: string, data: any, callback: (response: any) => void) => void;
         };
     }
 }
@@ -113,7 +112,7 @@ const save = async () => {
 
     loading.value = true;
     try {
-        window.socket.emit("setStackPath", {
+        socket.emit("setStackPath", {
             stackName: props.stackName,
             directoryPath: directoryPath.value,
         }, (response: { ok: boolean; msg?: string }) => {
