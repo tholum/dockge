@@ -306,11 +306,16 @@ export class Stack {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
         const operationPath = this.getOperationPath();
         log.debug("stack", `Deploying in ${operationPath}`);
-        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "up", "-d", "--remove-orphans" ], operationPath);
-        if (exitCode !== 0) {
-            throw new Error("Failed to deploy, please check the terminal output for more information.");
+        try {
+            let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "up", "-d", "--remove-orphans" ], operationPath);
+            if (exitCode !== 0) {
+                throw new Error("Failed to deploy, please check the terminal output for more information.");
+            }
+            return exitCode;
+        } catch (e) {
+            log.error("stack", `Deploy error: ${e instanceof Error ? e.message : String(e)}`);
+            throw e;
         }
-        return exitCode;
     }
 
     async delete(socket: DockgeSocket) : Promise<number> {
@@ -469,14 +474,36 @@ export class Stack {
      * @param status
      */
     static statusConvert(status : string) : number {
-        if (status.startsWith("created")) {
-            return CREATED_STACK;
-        } else if (status.includes("exited")) {
-            // If one of the service is exited, we consider the stack is exited
-            return EXITED;
-        } else if (status.startsWith("running")) {
-            // If there is no exited services, there should be only running services
+        log.debug("stack", `Converting status: ${status}`);
+        if (!status) {
+            return UNKNOWN;
+        }
+
+        // Parse status string to get counts
+        const counts = {
+            created: 0,
+            exited: 0,
+            running: 0
+        };
+
+        const parts = status.split(", ");
+        for (const part of parts) {
+            const match = part.match(/(\w+)\((\d+)\)/);
+            if (match) {
+                const [, state, count] = match;
+                counts[state] = parseInt(count, 10);
+            }
+        }
+
+        log.debug("stack", `Status counts: ${JSON.stringify(counts)}`);
+
+        // Determine overall status
+        if (counts.running > 0 && counts.exited === 0) {
             return RUNNING;
+        } else if (counts.exited > 0) {
+            return EXITED;
+        } else if (counts.created > 0) {
+            return CREATED_STACK;
         } else {
             return UNKNOWN;
         }
