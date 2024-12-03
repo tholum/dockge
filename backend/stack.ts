@@ -306,11 +306,32 @@ export class Stack {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
         const operationPath = this.getOperationPath();
         log.debug("stack", `Deploying in ${operationPath}`);
+
+        // Ensure operation path exists
+        if (!fs.existsSync(operationPath)) {
+            log.error("stack", `Operation path does not exist: ${operationPath}`);
+            throw new Error(`Operation path does not exist: ${operationPath}`);
+        }
+
+        // Ensure compose file exists
+        const composeFile = path.join(operationPath, this._composeFileName);
+        if (!fs.existsSync(composeFile)) {
+            log.error("stack", `Compose file does not exist: ${composeFile}`);
+            throw new Error(`Compose file does not exist: ${composeFile}`);
+        }
+
         try {
+            // Change to operation path before executing command
+            process.chdir(operationPath);
+            log.debug("stack", `Changed working directory to: ${operationPath}`);
+
             let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "up", "-d", "--remove-orphans" ], operationPath);
             if (exitCode !== 0) {
                 throw new Error("Failed to deploy, please check the terminal output for more information.");
             }
+
+            // Update status after deployment
+            await this.updateStatus();
             return exitCode;
         } catch (e) {
             log.error("stack", `Deploy error: ${e instanceof Error ? e.message : String(e)}`);
@@ -322,24 +343,51 @@ export class Stack {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
         const operationPath = this.getOperationPath();
         log.debug("stack", `Deleting in ${operationPath}`);
-        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "down", "--remove-orphans" ], operationPath);
-        if (exitCode !== 0) {
-            throw new Error("Failed to delete, please check the terminal output for more information.");
+
+        // Ensure operation path exists
+        if (!fs.existsSync(operationPath)) {
+            log.error("stack", `Operation path does not exist: ${operationPath}`);
+            throw new Error(`Operation path does not exist: ${operationPath}`);
         }
 
-        // Remove the stack folder if it's managed by Dockge
-        if (this.isManagedByDockge) {
-            log.debug("stack", `Removing stack folder: ${this.path}`);
-            await fsAsync.rm(this.path, {
-                recursive: true,
-                force: true
-            });
+        // Ensure compose file exists
+        const composeFile = path.join(operationPath, this._composeFileName);
+        if (!fs.existsSync(composeFile)) {
+            log.error("stack", `Compose file does not exist: ${composeFile}`);
+            throw new Error(`Compose file does not exist: ${composeFile}`);
         }
 
-        // Remove the custom path if it exists
-        log.debug("stack", `Removing custom path for ${this.name}`);
-        await R.exec("DELETE FROM stack WHERE name = ?", [this.name]);
-        Stack.updatePathCache(this.name, null);
+        try {
+            // Change to operation path before executing command
+            process.chdir(operationPath);
+            log.debug("stack", `Changed working directory to: ${operationPath}`);
+
+            let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "down", "--remove-orphans" ], operationPath);
+            if (exitCode !== 0) {
+                throw new Error("Failed to delete, please check the terminal output for more information.");
+            }
+
+            // Remove the stack folder if it's managed by Dockge
+            if (this.isManagedByDockge) {
+                log.debug("stack", `Removing stack folder: ${this.path}`);
+                await fsAsync.rm(this.path, {
+                    recursive: true,
+                    force: true
+                });
+            }
+
+            // Remove the custom path if it exists
+            log.debug("stack", `Removing custom path for ${this.name}`);
+            await R.exec("DELETE FROM stack WHERE name = ?", [this.name]);
+            Stack.updatePathCache(this.name, null);
+
+            // Update status after deletion
+            await this.updateStatus();
+            return exitCode;
+        } catch (e) {
+            log.error("stack", `Delete error: ${e instanceof Error ? e.message : String(e)}`);
+            throw e;
+        }
 
         return exitCode;
     }
@@ -483,7 +531,9 @@ export class Stack {
         const counts = {
             created: 0,
             exited: 0,
-            running: 0
+            running: 0,
+            restarting: 0,
+            paused: 0
         };
 
         const parts = status.split(", ");
@@ -491,22 +541,40 @@ export class Stack {
             const match = part.match(/(\w+)\((\d+)\)/);
             if (match) {
                 const [, state, count] = match;
-                counts[state] = parseInt(count, 10);
+                counts[state.toLowerCase()] = parseInt(count, 10);
             }
         }
 
         log.debug("stack", `Status counts: ${JSON.stringify(counts)}`);
 
         // Determine overall status
-        if (counts.running > 0 && counts.exited === 0) {
-            return RUNNING;
-        } else if (counts.exited > 0) {
-            return EXITED;
-        } else if (counts.created > 0) {
-            return CREATED_STACK;
-        } else {
+        const total = counts.running + counts.exited + counts.created + counts.restarting + counts.paused;
+        if (total === 0) {
             return UNKNOWN;
         }
+
+        // If all containers are running, stack is running
+        if (counts.running === total) {
+            return RUNNING;
+        }
+
+        // If any container is running, stack is partially running
+        if (counts.running > 0) {
+            return RUNNING;
+        }
+
+        // If any container is exited, stack is exited
+        if (counts.exited > 0) {
+            return EXITED;
+        }
+
+        // If any container is created, stack is created
+        if (counts.created > 0) {
+            return CREATED_STACK;
+        }
+
+        // Default to unknown
+        return UNKNOWN;
     }
 
     static async getStack(server: DockgeServer, stackName: string, skipFSOperations = false) : Promise<Stack> {

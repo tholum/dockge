@@ -82,6 +82,21 @@ export function statusNameShort(status : number) : string {
     }
 }
 
+export function statusNameLong(status : number) : string {
+    switch (status) {
+        case CREATED_FILE:
+            return "Created (File)";
+        case CREATED_STACK:
+            return "Created (Stack)";
+        case RUNNING:
+            return "Running";
+        case EXITED:
+            return "Exited";
+        default:
+            return "Unknown";
+    }
+}
+
 export function statusColor(status : number) : string {
     switch (status) {
         case CREATED_FILE:
