@@ -193,22 +193,13 @@ export class Stack {
             throw new ValidationError("No compose file found in directory");
         }
 
-        // Save or update the custom path
+        // Save or update the custom path using SQLite's UPSERT
         try {
-            // Try to find existing record
-            let stackBean = await R.findOne("stack", " name = ? ", [this.name]);
-            
-            if (stackBean) {
-                // Update existing record
-                stackBean.directory_path = directoryPath;
-            } else {
-                // Create new record
-                stackBean = R.dispense("stack");
-                stackBean.name = this.name;
-                stackBean.directory_path = directoryPath;
-            }
-            
-            await R.store(stackBean);
+            await R.exec(
+                "INSERT INTO stack (name, directory_path, created_at, updated_at) VALUES (?, ?, datetime('now'), datetime('now')) " +
+                "ON CONFLICT(name) DO UPDATE SET directory_path = ?, updated_at = datetime('now')",
+                [this.name, directoryPath, directoryPath]
+            );
         } catch (e) {
             log.error("stack", `Failed to save stack path: ${e instanceof Error ? e.message : String(e)}`);
             throw new ValidationError("Failed to save stack path");
