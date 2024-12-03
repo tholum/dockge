@@ -69,7 +69,7 @@ export class Stack {
             }
         }
 
-        let obj = this.toSimpleJSON(endpoint);
+        let obj = await this.toSimpleJSON(endpoint);
         return {
             ...obj,
             composeYAML: this.composeYAML,
@@ -78,12 +78,12 @@ export class Stack {
         };
     }
 
-    toSimpleJSON(endpoint : string) : object {
+    async toSimpleJSON(endpoint : string) : Promise<object> {
         return {
             name: this.name,
             status: this._status,
             tags: [],
-            isManagedByDockge: this.isManagedByDockge,
+            isManagedByDockge: await this.isManaged(),
             composeFileName: this._composeFileName,
             endpoint,
         };
@@ -104,8 +104,22 @@ export class Stack {
         return JSON.parse(res.stdout.toString());
     }
 
+    async isManaged() : Promise<boolean> {
+        // A stack is considered managed if it's in the default path or has a custom path
+        const defaultPath = path.join(this.server.stacksDir, this.name);
+        const hasDefaultPath = fs.existsSync(defaultPath) && fs.statSync(defaultPath).isDirectory();
+        if (hasDefaultPath) {
+            return true;
+        }
+
+        // Check for custom path
+        const customPath = await this.getCustomPath();
+        return customPath !== null && fs.existsSync(customPath) && fs.statSync(customPath).isDirectory();
+    }
+
     get isManagedByDockge() : boolean {
-        // A stack is considered managed by Dockge if it's in the default path
+        // For backward compatibility, synchronous version only checks default path
+        // The async version isManaged() should be used when possible
         const defaultPath = path.join(this.server.stacksDir, this.name);
         return fs.existsSync(defaultPath) && fs.statSync(defaultPath).isDirectory();
     }

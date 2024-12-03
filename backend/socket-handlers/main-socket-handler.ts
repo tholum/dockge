@@ -334,6 +334,9 @@ export class MainSocketHandler extends SocketHandler {
                 const stack = await Stack.getStack(server, data.stackName);
                 await stack.setCustomPath(data.directoryPath);
 
+                // Send updated stack list to refresh UI
+                server.sendStackList();
+
                 callback({
                     ok: true,
                     msg: "Stack path updated successfully",
