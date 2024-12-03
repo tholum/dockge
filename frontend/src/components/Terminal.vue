@@ -139,18 +139,28 @@ export default {
 
     methods: {
         bind(endpoint, name) {
-            // Workaround: normally this.name should be set, but it is not sometimes, so we use the parameter, but eventually this.name and name must be the same name
-            if (name) {
-                this.$root.unbindTerminal(name);
-                this.$root.bindTerminal(endpoint, name, this.terminal);
-                console.debug("Terminal bound via parameter: " + name);
-            } else if (this.name) {
-                this.$root.unbindTerminal(this.name);
-                this.$root.bindTerminal(this.endpoint, this.name, this.terminal);
-                console.debug("Terminal bound: " + this.name);
-            } else {
+            // Use provided endpoint/name or fallback to props
+            const terminalName = name || this.name;
+            const terminalEndpoint = endpoint || this.endpoint;
+
+            if (!terminalName) {
                 console.debug("Terminal name not set");
+                return;
             }
+
+            // Unbind existing terminal
+            this.$root.unbindTerminal(terminalName);
+
+            // Bind new terminal
+            this.$root.bindTerminal(terminalEndpoint, terminalName, this.terminal);
+            console.debug(`Terminal bound: ${terminalName} (endpoint: ${terminalEndpoint})`);
+
+            // Join terminal
+            this.$root.emitAgent(terminalEndpoint, "terminalJoin", terminalName, (res) => {
+                if (res.ok && res.buffer) {
+                    this.terminal.write(res.buffer);
+                }
+            });
         },
 
         removeInput() {
