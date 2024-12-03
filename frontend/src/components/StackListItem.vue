@@ -1,19 +1,32 @@
 <template>
-    <router-link :to="url" :class="{ 'dim' : !stack.isManagedByDockge }" class="item">
-        <Uptime :stack="stack" :fixed-width="true" class="me-2" />
-        <div class="title">
-            <span>{{ stackName }}</span>
-            <div v-if="$root.agentCount > 1" class="endpoint">{{ endpointDisplay }}</div>
-        </div>
-    </router-link>
+    <div class="item-wrapper">
+        <router-link :to="url" :class="{ 'dim' : !stack.isManagedByDockge }" class="item">
+            <Uptime :stack="stack" :fixed-width="true" class="me-2" />
+            <div class="title">
+                <span>{{ stackName }}</span>
+                <div v-if="$root.agentCount > 1" class="endpoint">{{ endpointDisplay }}</div>
+            </div>
+        </router-link>
+        <button v-if="!stack.isManagedByDockge" class="button is-small is-info" @click="showSetPathDialog = true">
+            Set Path
+        </button>
+    </div>
+    <SetPathDialog
+        :show="showSetPathDialog"
+        :stack-name="stackName"
+        @close="showSetPathDialog = false"
+        @saved="onPathSaved"
+    />
 </template>
 
 <script>
 import Uptime from "./Uptime.vue";
+import SetPathDialog from "./SetPathDialog.vue";
 
 export default {
     components: {
-        Uptime
+        Uptime,
+        SetPathDialog
     },
     props: {
         /** Stack this represents */
@@ -50,6 +63,7 @@ export default {
     data() {
         return {
             isCollapsed: true,
+            showSetPathDialog: false,
         };
     },
     computed: {
@@ -82,6 +96,14 @@ export default {
 
     },
     methods: {
+        /**
+         * Callback when the path is saved successfully
+         */
+        onPathSaved() {
+            // Refresh the page to update the stack status
+            window.location.reload();
+        },
+
         /**
          * Changes the collapsed value of the current stack and saves
          * it to local storage
@@ -129,6 +151,13 @@ export default {
     padding-right: 2px !important;
 }
 
+.item-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-right: 8px;
+}
+
 .item {
     text-decoration: none;
     display: flex;
@@ -136,7 +165,7 @@ export default {
     min-height: 52px;
     border-radius: 10px;
     transition: all ease-in-out 0.15s;
-    width: 100%;
+    flex-grow: 1;
     padding: 5px 8px;
     &.disabled {
         opacity: 0.3;
