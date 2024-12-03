@@ -10,3 +10,5 @@ tmp
 # Git only
 frontend-dist
 
+# Development
+**/*.code-workspace
