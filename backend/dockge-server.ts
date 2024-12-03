@@ -168,6 +168,10 @@ export class DockgeServer {
         // Create express
         this.app = express();
 
+        // Add body parser middleware
+        this.app.use(express.json());
+        this.app.use(express.urlencoded({ extended: true }));
+
         // Create HTTP server
         if (this.config.sslKey && this.config.sslCert) {
             log.info("server", "Server Type: HTTPS");
