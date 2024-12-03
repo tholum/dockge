@@ -7,8 +7,11 @@
                 <div v-if="$root.agentCount > 1" class="endpoint">{{ endpointDisplay }}</div>
             </div>
         </router-link>
-        <button v-if="!stack.isManagedByDockge" class="button is-small is-info" @click="showSetPathDialog = true">
-            Set Path
+        <button v-if="!stack.isManagedByDockge" class="button is-small is-light" @click="showSetPathDialog = true">
+            <span class="icon">
+                <i class="fas fa-folder"></i>
+            </span>
+            <span>Set Path</span>
         </button>
     </div>
     <SetPathDialog
