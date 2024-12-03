@@ -353,6 +353,8 @@ export class DockgeServer {
         // Connect to database
         try {
             await Database.init(this);
+            // Initialize path cache
+            await Stack.initPathCache();
         } catch (e) {
             if (e instanceof Error) {
                 log.error("server", "Failed to prepare your database: " + e.message);
@@ -508,7 +510,7 @@ export class DockgeServer {
 
                     // Convert each stack to JSON
                     for (const [name, stack] of stackList.entries()) {
-                        stackListJSON[name] = await stack.toJSON("");
+                        stackListJSON[name] = stack.toJSON("");
                     }
                 }
 

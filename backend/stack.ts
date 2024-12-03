@@ -52,42 +52,34 @@ export class Stack {
         }
     }
 
-    async toJSON(endpoint : string) : Promise<object> {
+    toJSON(endpoint : string) : object {
         // Since we have multiple agents now, embed primary hostname in the stack object too.
-        let primaryHostname = await Settings.get("primaryHostname");
-        if (!primaryHostname) {
-            if (!endpoint) {
+        let primaryHostname = "localhost";
+        if (endpoint) {
+            // Use the endpoint as the primary hostname
+            try {
+                primaryHostname = (new URL("https://" + endpoint).hostname);
+            } catch (e) {
+                // Just in case if the endpoint is in a incorrect format
                 primaryHostname = "localhost";
-            } else {
-                // Use the endpoint as the primary hostname
-                try {
-                    primaryHostname = (new URL("https://" + endpoint).hostname);
-                } catch (e) {
-                    // Just in case if the endpoint is in a incorrect format
-                    primaryHostname = "localhost";
-                }
             }
         }
 
-        const [obj, composeYAML, composeENV] = await Promise.all([
-            this.toSimpleJSON(endpoint),
-            this.getComposeYAML(),
-            this.getComposeENV()
-        ]);
+        const obj = this.toSimpleJSON(endpoint);
         return {
             ...obj,
-            composeYAML,
-            composeENV,
+            composeYAML: this.composeYAML,
+            composeENV: this.composeENV,
             primaryHostname,
         };
     }
 
-    async toSimpleJSON(endpoint : string) : Promise<object> {
+    toSimpleJSON(endpoint : string) : object {
         return {
             name: this.name,
             status: this._status,
             tags: [],
-            isManagedByDockge: await this.isManaged(),
+            isManagedByDockge: this.isManagedByDockge,
             composeFileName: this._composeFileName,
             endpoint,
         };
@@ -108,7 +100,7 @@ export class Stack {
         return JSON.parse(res.stdout.toString());
     }
 
-    async isManaged() : Promise<boolean> {
+    get isManagedByDockge() : boolean {
         // A stack is considered managed if it's in the default path or has a custom path
         const defaultPath = path.join(this.server.stacksDir, this.name);
         const hasDefaultPath = fs.existsSync(defaultPath) && fs.statSync(defaultPath).isDirectory();
@@ -117,15 +109,29 @@ export class Stack {
         }
 
         // Check for custom path
-        const customPath = await this.getCustomPath();
-        return customPath !== null && fs.existsSync(customPath) && fs.statSync(customPath).isDirectory();
+        const customPath = Stack.pathCache.get(this.name);
+        return customPath !== undefined && fs.existsSync(customPath) && fs.statSync(customPath).isDirectory();
     }
 
-    get isManagedByDockge() : boolean {
-        // For backward compatibility, synchronous version only checks default path
-        // The async version isManaged() should be used when possible
-        const defaultPath = path.join(this.server.stacksDir, this.name);
-        return fs.existsSync(defaultPath) && fs.statSync(defaultPath).isDirectory();
+    // Cache of custom paths
+    private static pathCache: Map<string, string> = new Map();
+
+    // Initialize path cache from database
+    static async initPathCache() {
+        const paths = await R.findAll("stack");
+        Stack.pathCache.clear();
+        for (const bean of paths) {
+            Stack.pathCache.set(bean.name, bean.directory_path);
+        }
+    }
+
+    // Update path cache for a specific stack
+    static updatePathCache(name: string, path: string | null) {
+        if (path) {
+            Stack.pathCache.set(name, path);
+        } else {
+            Stack.pathCache.delete(name);
+        }
     }
 
     get status() : number {
@@ -157,10 +163,10 @@ export class Stack {
         }
     }
 
-    async getComposeYAML() : Promise<string> {
+    get composeYAML() : string {
         if (this._composeYAML === undefined) {
             try {
-                const operationPath = await this.getOperationPath();
+                const operationPath = this.getOperationPath();
                 this._composeYAML = fs.readFileSync(path.join(operationPath, this._composeFileName), "utf-8");
             } catch (e) {
                 this._composeYAML = "";
@@ -169,33 +175,11 @@ export class Stack {
         return this._composeYAML;
     }
 
-    get composeYAML() : string {
-        if (this._composeYAML === undefined) {
-            try {
-                this._composeYAML = fs.readFileSync(path.join(this.path, this._composeFileName), "utf-8");
-            } catch (e) {
-                this._composeYAML = "";
-            }
-        }
-        return this._composeYAML;
-    }
-
-    async getComposeENV() : Promise<string> {
-        if (this._composeENV === undefined) {
-            try {
-                const operationPath = await this.getOperationPath();
-                this._composeENV = fs.readFileSync(path.join(operationPath, ".env"), "utf-8");
-            } catch (e) {
-                this._composeENV = "";
-            }
-        }
-        return this._composeENV;
-    }
-
     get composeENV() : string {
         if (this._composeENV === undefined) {
             try {
-                this._composeENV = fs.readFileSync(path.join(this.path, ".env"), "utf-8");
+                const operationPath = this.getOperationPath();
+                this._composeENV = fs.readFileSync(path.join(operationPath, ".env"), "utf-8");
             } catch (e) {
                 this._composeENV = "";
             }
@@ -207,19 +191,14 @@ export class Stack {
         return path.join(this.server.stacksDir, this.name);
     }
 
-    async getOperationPath() : Promise<string> {
-        // For Docker Compose operations, try to get custom path from database
-        const customPath = await this.getCustomPath();
+    getOperationPath() : string {
+        // For Docker Compose operations, try to get custom path from cache
+        const customPath = this.getCustomPath();
         return customPath || this.path;
     }
 
-    async getCustomPath() : Promise<string | null> {
-        try {
-            const stackBean = await R.findOne("stack", " name = ? ", [this.name]);
-            return stackBean?.directory_path || null;
-        } catch (e) {
-            return null;
-        }
+    getCustomPath() : string | null {
+        return Stack.pathCache.get(this.name) || null;
     }
 
     async setCustomPath(directoryPath: string) : Promise<void> {
@@ -248,6 +227,8 @@ export class Stack {
                 "ON CONFLICT(name) DO UPDATE SET directory_path = ?, updated_at = datetime('now')",
                 [this.name, directoryPath, directoryPath]
             );
+            // Update the path cache
+            Stack.updatePathCache(this.name, directoryPath);
         } catch (e) {
             log.error("stack", `Failed to save stack path: ${e instanceof Error ? e.message : String(e)}`);
             throw new ValidationError("Failed to save stack path");
@@ -338,6 +319,7 @@ export class Stack {
 
         // Remove the custom path if it exists
         await R.exec("DELETE FROM stack WHERE name = ?", [this.name]);
+        Stack.updatePathCache(this.name, null);
 
         return exitCode;
     }
