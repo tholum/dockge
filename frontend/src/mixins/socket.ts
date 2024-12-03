@@ -259,18 +259,12 @@ export default defineComponent({
             });
 
             agentSocket.on("terminalWrite", (terminalName, data) => {
-                console.debug(`Terminal write: ${terminalName} (${data.length} bytes)`);
                 const terminal = terminalMap.get(terminalName);
                 if (!terminal) {
-                    console.debug(`Terminal not found: ${terminalName}`);
+                    //console.error("Terminal not found: " + terminalName);
                     return;
                 }
-                try {
-                    terminal.write(data);
-                    console.debug(`Data written to terminal: ${terminalName}`);
-                } catch (e) {
-                    console.error(`Failed to write to terminal ${terminalName}:`, e);
-                }
+                terminal.write(data);
             });
 
             socket.on("stackList", (res) => {

@@ -305,89 +305,32 @@ export class Stack {
     async deploy(socket : DockgeSocket) : Promise<number> {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
         const operationPath = this.getOperationPath();
-        log.debug("stack", `Deploying in ${operationPath}`);
-
-        // Ensure operation path exists
-        if (!fs.existsSync(operationPath)) {
-            log.error("stack", `Operation path does not exist: ${operationPath}`);
-            throw new Error(`Operation path does not exist: ${operationPath}`);
+        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "up", "-d", "--remove-orphans" ], operationPath);
+        if (exitCode !== 0) {
+            throw new Error("Failed to deploy, please check the terminal output for more information.");
         }
-
-        // Ensure compose file exists
-        const composeFile = path.join(operationPath, this._composeFileName);
-        if (!fs.existsSync(composeFile)) {
-            log.error("stack", `Compose file does not exist: ${composeFile}`);
-            throw new Error(`Compose file does not exist: ${composeFile}`);
-        }
-
-        try {
-            // Change to operation path before executing command
-            process.chdir(operationPath);
-            log.debug("stack", `Changed working directory to: ${operationPath}`);
-
-            let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "up", "-d", "--remove-orphans" ], operationPath);
-            if (exitCode !== 0) {
-                throw new Error("Failed to deploy, please check the terminal output for more information.");
-            }
-
-            // Update status after deployment
-            await this.updateStatus();
-            return exitCode;
-        } catch (e) {
-            log.error("stack", `Deploy error: ${e instanceof Error ? e.message : String(e)}`);
-            throw e;
-        }
+        return exitCode;
     }
 
     async delete(socket: DockgeSocket) : Promise<number> {
         const terminalName = getComposeTerminalName(socket.endpoint, this.name);
         const operationPath = this.getOperationPath();
-        log.debug("stack", `Deleting in ${operationPath}`);
-
-        // Ensure operation path exists
-        if (!fs.existsSync(operationPath)) {
-            log.error("stack", `Operation path does not exist: ${operationPath}`);
-            throw new Error(`Operation path does not exist: ${operationPath}`);
+        let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "down", "--remove-orphans" ], operationPath);
+        if (exitCode !== 0) {
+            throw new Error("Failed to delete, please check the terminal output for more information.");
         }
 
-        // Ensure compose file exists
-        const composeFile = path.join(operationPath, this._composeFileName);
-        if (!fs.existsSync(composeFile)) {
-            log.error("stack", `Compose file does not exist: ${composeFile}`);
-            throw new Error(`Compose file does not exist: ${composeFile}`);
+        // Remove the stack folder if it's managed by Dockge
+        if (this.isManagedByDockge) {
+            await fsAsync.rm(this.path, {
+                recursive: true,
+                force: true
+            });
         }
 
-        try {
-            // Change to operation path before executing command
-            process.chdir(operationPath);
-            log.debug("stack", `Changed working directory to: ${operationPath}`);
-
-            let exitCode = await Terminal.exec(this.server, socket, terminalName, "docker", [ "compose", "down", "--remove-orphans" ], operationPath);
-            if (exitCode !== 0) {
-                throw new Error("Failed to delete, please check the terminal output for more information.");
-            }
-
-            // Remove the stack folder if it's managed by Dockge
-            if (this.isManagedByDockge) {
-                log.debug("stack", `Removing stack folder: ${this.path}`);
-                await fsAsync.rm(this.path, {
-                    recursive: true,
-                    force: true
-                });
-            }
-
-            // Remove the custom path if it exists
-            log.debug("stack", `Removing custom path for ${this.name}`);
-            await R.exec("DELETE FROM stack WHERE name = ?", [this.name]);
-            Stack.updatePathCache(this.name, null);
-
-            // Update status after deletion
-            await this.updateStatus();
-            return exitCode;
-        } catch (e) {
-            log.error("stack", `Delete error: ${e instanceof Error ? e.message : String(e)}`);
-            throw e;
-        }
+        // Remove the custom path if it exists
+        await R.exec("DELETE FROM stack WHERE name = ?", [this.name]);
+        Stack.updatePathCache(this.name, null);
 
         return exitCode;
     }
