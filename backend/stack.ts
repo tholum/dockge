@@ -19,7 +19,7 @@ import {
 import { InteractiveTerminal, Terminal } from "./terminal";
 import childProcessAsync from "promisify-child-process";
 import { Settings } from "./settings";
-import { Stack as StackModel } from "./models/stack";
+import { R } from "redbean-node";
 
 export class Stack {
 
@@ -167,8 +167,8 @@ export class Stack {
 
     async getCustomPath() : Promise<string | null> {
         try {
-            const stackSettings = await StackModel.query().findById(this.name);
-            return stackSettings?.directory_path || null;
+            const stackBean = await R.findOne("stack", " name = ? ", [this.name]);
+            return stackBean?.directory_path || null;
         } catch (e) {
             return null;
         }
@@ -194,13 +194,10 @@ export class Stack {
         }
 
         // Save or update the custom path
-        await StackModel.query()
-            .insert({
-                name: this.name,
-                directory_path: directoryPath,
-            })
-            .onConflict("name")
-            .merge();
+        const stackBean = await R.findOne("stack", " name = ? ", [this.name]) || R.dispense("stack");
+        stackBean.name = this.name;
+        stackBean.directory_path = directoryPath;
+        await R.store(stackBean);
     }
 
     get fullPath() : string {
@@ -280,7 +277,7 @@ export class Stack {
         }
 
         // Remove the custom path if it exists
-        await StackModel.query().delete().where("name", this.name);
+        await R.exec("DELETE FROM stack WHERE name = ?", [this.name]);
 
         return exitCode;
     }
