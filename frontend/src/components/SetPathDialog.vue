@@ -102,6 +102,7 @@ const close = () => {
 };
 
 const save = async () => {
+    error.value = "";
     if (!directoryPath.value) {
         toast.error("Please enter a directory path");
         return;
@@ -119,20 +120,18 @@ const save = async () => {
             }),
         });
 
+        const data = await response.json();
         if (!response.ok) {
-            const data = await response.json();
             throw new Error(data.message || "Failed to set path");
         }
 
-        toast.success("Stack path updated successfully");
+        toast.success(data.message || "Stack path updated successfully");
         emit("saved");
         close();
-    } catch (error) {
-        if (error instanceof Error) {
-            toast.error(error.message);
-        } else {
-            toast.error("Failed to set path");
-        }
+    } catch (e) {
+        const message = e instanceof Error ? e.message : "Failed to set path";
+        toast.error(message);
+        error.value = message;
     } finally {
         loading.value = false;
     }

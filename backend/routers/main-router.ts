@@ -7,11 +7,15 @@ export class MainRouter extends Router {
     create(app: Express, server: DockgeServer): ExpressRouter {
         const router = express.Router();
 
+        // API routes
+        const apiRouter = express.Router();
+        apiRouter.use("/stacks", stackPathRouter);
+        router.use("/api", apiRouter);
+
+        // Frontend routes
         router.get("/", (req, res) => {
             res.send(server.indexHTML);
         });
-
-        router.use("/api/stacks", stackPathRouter);
 
         // Robots.txt
         router.get("/robots.txt", async (_request, response) => {
