@@ -54,6 +54,15 @@ const emit = defineEmits<{
     (e: "saved"): void;
 }>();
 
+declare global {
+    interface Window {
+        $notification: {
+            success: (msg: string) => void;
+            error: (msg: string) => void;
+        };
+    }
+}
+
 const toast = {
     success: (msg: string) => window.$notification.success(msg),
     error: (msg: string) => window.$notification.error(msg),
